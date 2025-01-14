@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+langchain
+faiss-cpu
+sentence-transformers
+google-generativeai
+numpy
+python-multipart
+rich
