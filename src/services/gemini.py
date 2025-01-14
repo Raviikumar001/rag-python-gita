@@ -13,7 +13,7 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
             
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-1.5-pro')
         
         logger.info("Initialized Gemini service")
 
