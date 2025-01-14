@@ -24,4 +24,4 @@ RUN mkdir -p /app/data/processed/faiss_index \
 ENV PORT 8080
 
 # Command to run FastAPI with uvicorn
-CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT}
+CMD exec uvicorn main:app --host 0.0.0.0 --port 8080
