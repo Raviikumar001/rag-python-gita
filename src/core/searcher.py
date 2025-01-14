@@ -133,7 +133,7 @@ class EnhancedSearcher:
                         }
                         results.append(result)
             
-            # Deduplicate and return top k results
+            
             return self._deduplicate_results(results)[:k]
             
         except Exception as e:
@@ -141,7 +141,7 @@ class EnhancedSearcher:
             return []
 
     def _deduplicate_results(self, results: List[Dict]) -> List[Dict]:
-        """Remove duplicate results and sort by score"""
+        
         seen = set()
         unique_results = []
         

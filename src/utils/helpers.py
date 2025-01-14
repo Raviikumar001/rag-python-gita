@@ -36,7 +36,7 @@ def log_request(endpoint: str, data: Dict[str, Any]) -> str:
         "data": data
     }
     
-    # Log to file
+
     logger.info(
         f"Incoming request to {endpoint}",
         extra={
@@ -56,7 +56,7 @@ def log_response(request_id: str, response_data: Dict[str, Any]) -> None:
         "response": response_data
     }
     
-    # Log to file
+
     logger.info(
         "Outgoing response",
         extra={
