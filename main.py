@@ -12,17 +12,9 @@ from glob import glob
 
 
 app = Flask(__name__)
-app.config['TITLE'] = "Crustdata API"
-app.config['VERSION'] = "1.0.0"
 
 # CORS setup
-CORS(app, resources={
-    r"/*": {
-        "origins": "*",
-        "methods": ["*"],
-        "allow_headers": ["*"]
-    }
-})
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 def setup_directories():
 

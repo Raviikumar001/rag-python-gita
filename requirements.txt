@@ -1,15 +1,3 @@
-# fastapi
-# uvicorn
-# pydantic
-# python-dotenv
-# langchain
-# faiss-cpu
-# sentence-transformers
-# google-generativeai
-# numpy
-# python-multipart
-# rich
-
 Flask==3.0.3
 gunicorn==22.0.0
 Werkzeug==3.0.3

@@ -83,5 +83,5 @@ def get_request_context() -> Dict[str, Any]:
         "timestamp": datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),
         "user": os.getenv("GITHUB_USER", "ravi-hisoka"),
         "environment": os.getenv("ENV", "development"),
-        "service": "crustdata-api"
+        "service": "gita-agent-bot"
     }
