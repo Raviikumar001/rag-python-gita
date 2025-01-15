@@ -1,34 +1,55 @@
 # api/models.py
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Dict
 from datetime import datetime
 
-class SearchQuery(BaseModel):
-    query: str = Field(..., min_length=1, description="Search query string")
-    k: Optional[int] = Field(default=5, gt=0, le=20, description="Number of results to return")
-    threshold: Optional[float] = Field(default=0.3, gt=0, le=1.0, description="Similarity threshold")
+@dataclass
+class SearchQuery:
+    query: str
+    k: int = 5
+    threshold: float = 0.3
 
-class QuestionQuery(BaseModel):
-    question: str = Field(..., min_length=1, description="Question about the API")
-    context_limit: Optional[int] = Field(default=5, gt=0, le=10, description="Number of context chunks to use")
+@dataclass
+class QuestionQuery:
+    question: str
+    context_limit: int = 5
 
-class MetadataModel(BaseModel):
+@dataclass
+class MetadataModel:
     timestamp: datetime
-    user: str
-    request_id: str
-    additional_info: Optional[dict] = None
+    user: str = "ravi-hisoka"
+    request_id: str = ""
+    additional_info: Optional[Dict] = None
 
-class SearchResult(BaseModel):
+@dataclass
+class SearchResult:
     content: str
     score: float
     chunk_index: int
 
-class SearchResponse(BaseModel):
+@dataclass
+class SearchResponse:
     results: List[SearchResult]
     total: int
     query_time: float
     metadata: MetadataModel
 
-class QuestionResponse(BaseModel):
+@dataclass
+class QuestionResponse:
     answer: str
     metadata: MetadataModel
+
+def validate_query(query_data: dict) -> QuestionQuery:
+    """Helper function to validate and create QuestionQuery"""
+    if not query_data.get('question'):
+        raise ValueError("Question is required")
+    
+    context_limit = query_data.get('context_limit', 5)
+    if not 0 < context_limit <= 10:
+        raise ValueError("Context limit must be between 1 and 10")
+        
+    return QuestionQuery(
+        question=query_data['question'],
+        context_limit=context_limit
+    )
+
