@@ -2,26 +2,19 @@
 FROM python:3.11-slim
 
 
-ENV PYTHONUNBUFFERED=1
-
-
-WORKDIR /app
-
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
 
-COPY src/ ./src/
-COPY main.py .
+RUN pip3 install -r requirements.txt
 
 
-RUN mkdir -p /app/data/processed/faiss_index \
-    /app/data/processed/chunks \
-    /app/data/raw
+COPY . .
 
 
-ENV PORT 8080
+RUN mkdir -p  data/processed/faiss_index data/processed/chunks logs
 
 
-CMD exec python main.py
+
+# Run the application
+CMD ["python", "main.py"]

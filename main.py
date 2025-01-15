@@ -63,7 +63,7 @@ async def startup_event():
             embedder = DocumentEmbedder()
             
             
-            chunks = chunker.process_documentation('data/raw/gita.md')
+            chunks = chunker.process_documentation('./data/raw/gita.md')
             embedder.process_chunks(chunks)
         else:
             print("\nUsing existing processed files...")
