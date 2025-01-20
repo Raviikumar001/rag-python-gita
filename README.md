@@ -6,7 +6,7 @@ An intelligent assistant that uses Google's Gemini AI to provide accurate answer
 
 ```mermaid
 graph TD
-    A[API Documentation] --> B[Document Processor]
+    A[Docs] --> B[Document Processor]
     B --> C[Text Chunks]
     C --> D[SentenceTransformer Embedding Model]
     D --> E[FAISS Vector Store]
