@@ -15,7 +15,7 @@ graph TD
     G --> H[Similarity Search]
     E --> H
     H --> I[Context Retrieval]
-    I --> J[Gemini Pro]
+    I --> J[Gemini]
     J --> K[Generated Answer]
 
 ```
@@ -25,13 +25,21 @@ graph TD
 ### Using Docker
 
 ```bash
-# Build the image
-docker build -t crustdata-assistant .
 
-# Run the container
-docker run -p 8000:8000 \
-  -e GEMINI_API_KEY=your_key_here \
-  crustdata-assistant
+# 2. Build and start the container
+docker-compose up --build -d
+
+# 3. Check service status
+docker-compose ps
+
+# 4. Test the API (health check)
+curl http://localhost:8080/health
+
+# To stop the container
+docker-compose down
+
+# View logs
+docker-compose logs -f
 ```
 
 ### Local Development Setup
@@ -102,7 +110,7 @@ sequenceDiagram
 
 ### 2. Embedding System
 
-- Uses Gemini for generating embeddings
+- Uses SentenceTransformer for generating embeddings
 - Converts text chunks to vectors
 - Optimizes for technical content
 
@@ -116,7 +124,7 @@ sequenceDiagram
 
 - Context-aware answers
 - Technical accuracy
-- Natural language responses
+- Natural Gen Ai language responses
 
 ## 📡 API Endpoints
 
@@ -130,6 +138,11 @@ Content-Type: application/json
     "question": "Who is arjuna?",
     "max_context": 3  # Optional: Number of relevant chunks to use
 }
+```
+```bash
+curl -X POST http://localhost:8080/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the concept of dharma in the Gita?"}'
 ```
 
 ### Health Check
@@ -165,15 +178,11 @@ MAX_TOKENS=8192
 ### Docker Configuration
 
 ```dockerfile
-FROM python:3.9-slim
-
-COPY requirements.txt .
-RUN pip3 install -r requirements.txt
-
-COPY . .
-RUN mkdir -p data/raw data/processed/faiss_index data/processed/chunks logs
-
-CMD ["python", "main.py"]
+- **Multi-stage Build** - Reduces final image size (~300MB)
+- **Security First** - Non-root user with minimal privileges
+- **Production-Ready** - Environment variables & health checks
+- **Efficient Caching** - Optimized layer caching for faster builds
+Refer dockerfile for more details
 ```
 
 ## 📊 Performance Considerations
