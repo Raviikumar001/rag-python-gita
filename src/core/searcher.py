@@ -2,15 +2,23 @@
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+import google.generativeai as genai
 from typing import List, Dict, Optional
 from pathlib import Path
 import pickle
 from datetime import datetime, timezone
+import os
 
 class EnhancedSearcher:
-    def __init__(self):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+    def __init__(self, model_name: str = "models/text-embedding-004"):
+        # Initialize Gemini
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY environment variable is not set")
+        
+        genai.configure(api_key=api_key)
+        self.model_name = model_name
+        self.embedding_dim = 768  # Gemini embeddings dimension
         self.index = None
         self.chunks = []
         self.similarity_threshold = 0.3
@@ -24,16 +32,22 @@ class EnhancedSearcher:
             print(f"\nBuilding index at {timestamp}")
             self.chunks = chunks
             
-            
+            # Generate embeddings using Gemini
             texts = [chunk['content'] for chunk in chunks]
-            embeddings = self.model.encode(texts)
+            embeddings = []
+            for text in texts:
+                result = genai.embed_content(
+                    model=self.model_name,
+                    content=text,
+                    task_type="SEMANTIC_SIMILARITY"
+                )
+                embeddings.append(result['embedding'])
+            embeddings = np.array(embeddings)
             
-            
-            dimension = embeddings.shape[1]
-            self.index = faiss.IndexFlatL2(dimension)
+            # Create and populate FAISS index
+            self.index = faiss.IndexFlatL2(self.embedding_dim)
             self.index.add(embeddings.astype(np.float32))
             
-           
             self._save_index(timestamp)
             
             print(f"Successfully built index with {len(chunks)} vectors")
@@ -44,23 +58,20 @@ class EnhancedSearcher:
             return False
 
     def _save_index(self, timestamp: str):
-        
         base_path = Path('data/processed/faiss_index')
         base_path.mkdir(parents=True, exist_ok=True)
-        
         
         index_path = base_path / f'docs_index_{timestamp}.faiss'
         faiss.write_index(self.index, str(index_path))
         
-        
         chunks_path = base_path / f'chunk_data_{timestamp}.pkl'
         chunk_data = {
             'chunks': self.chunks,
-            'embedding_model': self.model,
+            'embedding_model': self.model_name,
             'created_at': timestamp,
             'created_by': 'ravi-hisoka',
             'vector_count': len(self.chunks),
-            'vector_dimension': self.index.d,
+            'vector_dimension': self.embedding_dim,
             'current_date_utc': datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         }
         
@@ -109,14 +120,17 @@ class EnhancedSearcher:
             return None
 
     def search(self, query: str, k: int = 3) -> List[Dict]:
-        
         try:
             if self.index is None:
                 raise ValueError("Index not loaded")
                 
-            # Generate query embedding
-            query_embedding = self.model.encode([query])[0]
-            query_embedding = query_embedding.astype(np.float32).reshape(1, -1)
+            # Generate query embedding using Gemini
+            query_embedding = genai.embed_content(
+                model=self.model_name,
+                content=query,
+                task_type="SEMANTIC_SIMILARITY"
+            )['embedding']
+            query_embedding = np.array(query_embedding).astype(np.float32).reshape(1, -1)
             
             # Search
             distances, indices = self.index.search(query_embedding, k * 2)
@@ -132,7 +146,6 @@ class EnhancedSearcher:
                             'chunk_index': int(idx)
                         }
                         results.append(result)
-            
             
             return self._deduplicate_results(results)[:k]
             

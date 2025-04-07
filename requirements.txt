@@ -1,13 +1,9 @@
 Flask==3.0.3
 gunicorn==22.0.0
-Werkzeug==3.0.3
 flask_cors
 python-dotenv
 langchain
 faiss-cpu
-transformers>=4.34.0
-sentence-transformers>=2.2.0
 google-generativeai
 numpy
-python-multipart
-rich
+
