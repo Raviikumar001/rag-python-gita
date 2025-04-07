@@ -5,7 +5,8 @@ flask_cors
 python-dotenv
 langchain
 faiss-cpu
-sentence-transformers==3.3.1
+transformers>=4.34.0
+sentence-transformers>=2.2.0
 google-generativeai
 numpy
 python-multipart
