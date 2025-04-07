@@ -12,7 +12,7 @@ CURRENT_TIME = "2025-01-14 13:28:48"
 CURRENT_USER = "ravi-hisoka"
 
 class DocumentEmbedder:
-    def __init__(self, model_name: str = 'all-distilroberta-v1'):
+    def __init__(self, model_name: str = 'all-MiniLM-L6-v2'):
         
         print(f"\nInitializing DocumentEmbedder...")
         print(f"├── Model: {model_name}")

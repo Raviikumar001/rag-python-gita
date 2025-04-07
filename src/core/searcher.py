@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 class EnhancedSearcher:
     def __init__(self):
-        self.model = SentenceTransformer('all-distilroberta-v1')
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
         self.index = None
         self.chunks = []
         self.similarity_threshold = 0.3
