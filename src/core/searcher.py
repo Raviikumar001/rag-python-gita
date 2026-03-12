@@ -2,7 +2,7 @@
 
 import faiss
 import numpy as np
-import google.generativeai as genai
+from google import genai
 from typing import List, Dict, Optional
 from pathlib import Path
 import pickle
@@ -10,15 +10,15 @@ from datetime import datetime, timezone
 import os
 
 class EnhancedSearcher:
-    def __init__(self, model_name: str = "models/text-embedding-004"):
-        # Initialize Gemini
+    def __init__(self, model_name: str = "gemini-embedding-2-preview"):
+        # Initialize Gemini Client
         api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
         
-        genai.configure(api_key=api_key)
+        self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
-        self.embedding_dim = 768  # Gemini embeddings dimension
+        self.embedding_dim = 3072  # gemini-embedding-2-preview dimension
         self.index = None
         self.chunks = []
         self.similarity_threshold = 0.3
@@ -36,12 +36,15 @@ class EnhancedSearcher:
             texts = [chunk['content'] for chunk in chunks]
             embeddings = []
             for text in texts:
-                result = genai.embed_content(
+                result = self.client.models.embed_content(
                     model=self.model_name,
-                    content=text,
-                    task_type="SEMANTIC_SIMILARITY"
+                    contents=text,
+                    config={'task_type': "RETRIEVAL_DOCUMENT"}
                 )
-                embeddings.append(result['embedding'])
+                if isinstance(result.embeddings, list):
+                    embeddings.append(result.embeddings[0].values)
+                else:
+                    embeddings.append(result.embeddings.values)
             embeddings = np.array(embeddings)
             
             # Create and populate FAISS index
@@ -125,12 +128,18 @@ class EnhancedSearcher:
                 raise ValueError("Index not loaded")
                 
             # Generate query embedding using Gemini
-            query_embedding = genai.embed_content(
+            result = self.client.models.embed_content(
                 model=self.model_name,
-                content=query,
-                task_type="SEMANTIC_SIMILARITY"
-            )['embedding']
-            query_embedding = np.array(query_embedding).astype(np.float32).reshape(1, -1)
+                contents=query,
+                config={'task_type': "RETRIEVAL_QUERY"}
+            )
+            
+            if isinstance(result.embeddings, list):
+                query_vec = result.embeddings[0].values
+            else:
+                query_vec = result.embeddings.values
+                
+            query_embedding = np.array(query_vec).astype(np.float32).reshape(1, -1)
             
             # Search
             distances, indices = self.index.search(query_embedding, k * 2)

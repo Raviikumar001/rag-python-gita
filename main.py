@@ -42,7 +42,10 @@ def init_app():
         if not check_existing_files():
             print("\nProcessing documentation...")
             chunker = DocumentChunker()
-            embedder = DocumentEmbedder()
+            
+            # Get model name from environment
+            model_name = os.getenv("EMBEDDING_MODEL", "gemini-embedding-2-preview")
+            embedder = DocumentEmbedder(model_name=model_name)
             
             chunks = chunker.process_documentation('./data/raw/gita.md')
             embedder.process_chunks(chunks)

@@ -1,6 +1,6 @@
 # src/core/embedder.py
 
-import google.generativeai as genai
+from google import genai
 import numpy as np
 from typing import List, Dict
 from pathlib import Path
@@ -8,13 +8,12 @@ from datetime import datetime
 import faiss
 import pickle
 import os
-from google.generativeai import types
 
 CURRENT_TIME = "2025-01-14 13:28:48"
 CURRENT_USER = "ravi-hisoka"
 
 class DocumentEmbedder:
-    def __init__(self, model_name: str = "models/text-embedding-004"):
+    def __init__(self, model_name: str = "gemini-embedding-2-preview"):
         print(f"\nInitializing DocumentEmbedder...")
         print(f"├── Model: {model_name}")
         print(f"├── User: {CURRENT_USER}")
@@ -22,16 +21,15 @@ class DocumentEmbedder:
         
         self.model_name = model_name
         
-        # Initialize Gemini
+        # Initialize Gemini Client
         api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
             raise ValueError("GEMINI_API_KEY environment variable is not set")
         
-        genai.configure(api_key=api_key)
-        # self.model = genai.GenerativeModel(model_name=model_name) # No longer needed
+        self.client = genai.Client(api_key=api_key)
         
-        # Gemini embeddings are 768-dimensional
-        self.embedding_dim = 768
+        # gemini-embedding-2-preview uses 3072-dimensional embeddings
+        self.embedding_dim = 3072
         self.index = None
 
     def generate_embeddings(self, chunks: List[Dict[str, str]]) -> np.ndarray:
@@ -42,12 +40,21 @@ class DocumentEmbedder:
         
         embeddings = []
         for text in texts:
-            result = genai.embed_content(
+            result = self.client.models.embed_content(
                 model=self.model_name,
-                content=text,
-                task_type="SEMANTIC_SIMILARITY"
+                contents=text,
+                config={'task_type': "RETRIEVAL_DOCUMENT"}
             )
-            embeddings.append(result['embedding'])
+            
+            if isinstance(result.embeddings, list):
+                embeddings.append(result.embeddings[0].values)
+            else:
+                embeddings.append(result.embeddings.values)
+        
+        embeddings_array = np.array(embeddings)
+        print(f"\nEmbeddings generated:")
+        print(f"└── Shape: {embeddings_array.shape}")
+        return embeddings_array
         
         embeddings_array = np.array(embeddings)
         print(f"\nEmbeddings generated:")

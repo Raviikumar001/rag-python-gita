@@ -1,5 +1,5 @@
 # src/services/gemini.py
-import google.generativeai as genai
+from google import genai
 from typing import List
 from src.utils.logger import get_logger
 import os
@@ -12,10 +12,10 @@ class GeminiService:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
             
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        self.client = genai.Client(api_key=self.api_key)
+        self.model_name = 'gemini-2.0-flash'
         
-        logger.info("Initialized Gemini service")
+        logger.info("Initialized Gemini service (google-genai)")
 
     def _prepare_prompt(self, question: str, context_chunks: List[str]) -> str:
         context_text = "\n".join(context_chunks)
@@ -50,7 +50,10 @@ class GeminiService:
     def get_answer(self, question: str, context_chunks: List[str]) -> str:
         try:
             prompt = self._prepare_prompt(question, context_chunks)
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
             answer = response.text.strip()
             
             # Format the answer with proper markdown

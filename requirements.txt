@@ -3,7 +3,8 @@ gunicorn==22.0.0
 flask_cors
 python-dotenv
 langchain
+langchain-text-splitters
 faiss-cpu
-google-generativeai
+google-genai
 numpy
 

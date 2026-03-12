@@ -1,5 +1,5 @@
 # src/core/gita_chunker.py
-from langchain.text_splitter import MarkdownHeaderTextSplitter
+from langchain_text_splitters import MarkdownHeaderTextSplitter
 from pathlib import Path
 import json
 import os

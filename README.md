@@ -167,7 +167,7 @@ PORT=8000
 
 
 # Embedding Model Configuration
-EMBEDDING_MODEL="all-mpnet-base-v2"
+EMBEDDING_MODEL="gemini-embedding-2-preview"
 
 # Processing Configuration
 CHUNK_SIZE=1000
