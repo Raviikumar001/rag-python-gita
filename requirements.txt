@@ -1,46 +1,28 @@
-# Web Framework & Server
+# FastAPI + Server
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-python-multipart>=0.0.17
-gunicorn>=23.0.0
-
-# Data Validation & Config
 pydantic>=2.10.0
 pydantic-settings>=2.6.0
-email-validator>=2.2.0
+python-multipart>=0.0.17
 
 # Async HTTP
 httpx>=0.27.0
-httpcore>=1.0.0
 
-# Vector Database
+# Vector DB
 qdrant-client>=1.12.0
 
 # Cache
 redis>=5.2.0
 
-# JSON Performance
+# Chunking
+langchain-text-splitters>=0.3.0
+
+# Fast JSON
 orjson>=3.10.0
 
-# Security & Rate Limiting
-python-jose[cryptography]>=3.3.0
-slowapi>=0.1.9
-limits>=3.14.0
-
-# ML / Embeddings / Reranking
-sentence-transformers>=3.3.0
-torch>=2.5.0
-numpy>=1.26.0,<3.0.0
-
-# Observability
-langfuse>=2.55.0
-
-# Evaluation
-ragas>=0.2.0
-
-# Environment & Utils
-python-dotenv>=1.0.0
+# Utils
 tenacity>=9.0.0
+python-dotenv>=1.0.0
 
 # Testing
 pytest>=8.3.0

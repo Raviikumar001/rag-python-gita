@@ -4,9 +4,7 @@ FROM python:3.12-slim AS builder
 WORKDIR /app
 COPY requirements.txt .
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc python3-dev && \
-    python -m venv /opt/venv && \
+RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Runtime stage
