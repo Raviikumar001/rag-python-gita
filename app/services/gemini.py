@@ -30,7 +30,9 @@ Guidelines:
 4. Connect teachings to broader philosophical and spiritual context.
 5. Provide practical interpretations for modern life.
 6. Use markdown formatting for readability.
+7. If there is prior conversation history, use it to understand context and give coherent follow-up answers.
 
+{chat_history}
 Context from the Bhagavad Gita:
 ```
 {context}
@@ -196,15 +198,39 @@ class GeminiService:
 
     # ---- prompt builders ----
 
-    def _build_qa_prompt(self, question: str, context_chunks: List[str]) -> str:
+    def _build_qa_prompt(
+        self, question: str, context_chunks: List[str], chat_history: List[dict] | None = None
+    ) -> str:
         context_text = "\n\n---\n\n".join(context_chunks)
-        return _PROMPT_TEMPLATE.format(context=context_text, question=question)
+        history_text = ""
+        if chat_history:
+            # Only send the last 3 exchanges (6 messages) to keep prompt tight.
+            # Gemini 3 Flash handles 1M tokens, but shorter = faster + cheaper.
+            recent = chat_history[-6:]
+            total = len(chat_history)
+            lines = [f"Previous conversation ({total} total messages, showing last {len(recent)}):"]
+            for msg in recent:
+                label = "User" if msg.get("role") == "user" else "Assistant"
+                lines.append(f"{label}: {msg.get('content', '')}")
+            lines.append("")
+            history_text = "\n".join(lines) + "\n"
+        return _PROMPT_TEMPLATE.format(
+            chat_history=history_text, context=context_text, question=question
+        )
 
-    async def get_answer(self, question: str, context_chunks: List[str]) -> str:
-        return await self.generate_content(self._build_qa_prompt(question, context_chunks))
+    async def get_answer(
+        self, question: str, context_chunks: List[str], chat_history: List[dict] | None = None
+    ) -> str:
+        return await self.generate_content(
+            self._build_qa_prompt(question, context_chunks, chat_history)
+        )
 
-    async def stream_answer(self, question: str, context_chunks: List[str]) -> AsyncIterator[str]:
-        async for chunk in self.stream_content(self._build_qa_prompt(question, context_chunks)):
+    async def stream_answer(
+        self, question: str, context_chunks: List[str], chat_history: List[dict] | None = None
+    ) -> AsyncIterator[str]:
+        async for chunk in self.stream_content(
+            self._build_qa_prompt(question, context_chunks, chat_history)
+        ):
             yield chunk
 
     # ---- embeddings ----

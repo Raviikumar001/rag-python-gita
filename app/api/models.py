@@ -46,6 +46,7 @@ class AnswerResponse(BaseModel):
     model_used: str = ""
     context_chunks_used: int = 0
     query_time_ms: float = 0.0
+    session_id: Optional[str] = None
 
 
 class HealthResponse(BaseModel):

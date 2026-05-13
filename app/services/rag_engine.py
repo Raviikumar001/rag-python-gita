@@ -1,6 +1,5 @@
 # app/services/rag_engine.py
 import hashlib
-import json
 import time
 from typing import AsyncIterator, Optional, List
 
@@ -39,6 +38,25 @@ class RAGEngine:
         key_data = f"{question}:{context_limit}:{chapter_filter}:{speaker_filter}"
         return f"ans:{hashlib.md5(key_data.encode()).hexdigest()}"
 
+    # -- session memory ---------------------------------------------------------
+
+    async def get_memory(self, session_id: str) -> List[dict]:
+        key = f"session:{session_id}"
+        return await self.cache.get(key) or []
+
+    async def update_memory(
+        self, session_id: str, question: str, answer: str
+    ) -> None:
+        key = f"session:{session_id}"
+        history = await self.cache.get(key) or []
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": answer})
+        history = history[-20:]  # keep last 10 exchanges
+        await self.cache.set(key, history, ttl=86400)
+        logger.debug(f"Updated memory session={session_id}, turns={len(history) // 2}")
+
+    # -- answer generation ------------------------------------------------------
+
     async def get_answer(
         self,
         question: str,
@@ -47,30 +65,34 @@ class RAGEngine:
         speaker_filter: Optional[str] = None,
         session_id: Optional[str] = None,
     ) -> str:
-        """Get a complete answer with full caching and optional memory."""
         start = time.time()
 
-        # Check answer cache
-        cache_key = self._answer_cache_key(
-            question, context_limit, chapter_filter, speaker_filter
-        )
-        cached = await self.cache.get(cache_key)
-        if cached is not None:
-            logger.info(f"Answer cache hit for question='{question[:50]}...'")
-            return cached
+        # Load chat history for context (if session is active)
+        chat_history = await self.get_memory(session_id) if session_id else None
 
-        # Retrieve and rerank context
+        # Cache only applies when there's no conversation context
+        if not session_id:
+            cache_key = self._answer_cache_key(
+                question, context_limit, chapter_filter, speaker_filter
+            )
+            cached = await self.cache.get(cache_key)
+            if cached is not None:
+                logger.info(f"Answer cache hit for '{question[:50]}...'")
+                return cached
+
+        # Retrieve relevant Gita verses
         context = await self._retrieve_context(
             question, context_limit, chapter_filter, speaker_filter
         )
 
-        # Generate answer
-        answer = await self.gemini.get_answer(question, context)
+        # Generate with conversation history for follow-up context
+        answer = await self.gemini.get_answer(question, context, chat_history)
 
-        # Cache answer
-        await self.cache.set(cache_key, answer, ttl=3600)
+        # Cache standalone answers only (session answers depend on history)
+        if not session_id:
+            await self.cache.set(cache_key, answer, ttl=3600)
 
-        # Update memory
+        # Persist this turn
         if session_id:
             await self.update_memory(session_id, question, answer)
 
@@ -89,21 +111,16 @@ class RAGEngine:
         speaker_filter: Optional[str] = None,
         session_id: Optional[str] = None,
     ) -> AsyncIterator[str]:
-        """Stream answer tokens. Caller is responsible for caching and memory."""
-        start = time.time()
+        chat_history = await self.get_memory(session_id) if session_id else None
 
         context = await self._retrieve_context(
             question, context_limit, chapter_filter, speaker_filter
         )
 
-        async for token in self.gemini.stream_answer(question, context):
+        async for token in self.gemini.stream_answer(question, context, chat_history):
             yield token
 
-        duration = (time.time() - start) * 1000
-        logger.info(
-            f"Stream answer completed in {duration:.1f}ms",
-            extra={"duration_ms": duration, "endpoint": "/ask"},
-        )
+    # -- retrieval --------------------------------------------------------------
 
     async def _retrieve_context(
         self,
@@ -112,10 +129,7 @@ class RAGEngine:
         chapter_filter: Optional[int],
         speaker_filter: Optional[str],
     ) -> List[str]:
-        """Embed query, search vectors, optionally rerank, and return context texts."""
         embedding = await self.embedder.embed(question)
-
-        # Retrieve more candidates for reranking
         search_k = context_limit * 2 if self.searcher._reranker else context_limit
 
         results = self.searcher.search(
@@ -125,28 +139,9 @@ class RAGEngine:
             speaker_filter=speaker_filter,
         )
 
-        # Rerank if available
         if self.searcher._reranker:
             results = self.searcher.rerank(question, results, top_k=context_limit)
         else:
             results = results[:context_limit]
 
         return [r.content for r in results]
-
-    async def update_memory(
-        self, session_id: str, question: str, answer: str
-    ) -> None:
-        """Append Q&A turn to conversation memory."""
-        key = f"session:{session_id}"
-        history = await self.cache.get(key) or []
-        history.append({"role": "user", "content": question})
-        history.append({"role": "assistant", "content": answer})
-        # Keep last 20 messages (10 exchanges)
-        history = history[-20:]
-        await self.cache.set(key, history, ttl=86400)
-        logger.debug(f"Updated memory for session={session_id}, turns={len(history) // 2}")
-
-    async def get_memory(self, session_id: str) -> List[dict]:
-        """Retrieve conversation history for a session."""
-        key = f"session:{session_id}"
-        return await self.cache.get(key) or []
