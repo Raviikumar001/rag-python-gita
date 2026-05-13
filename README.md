@@ -1,213 +1,270 @@
-# Gita AI Rag chat bot 🤖
+# Gita AI RAG API v2.0
 
-An intelligent assistant that uses Google's Gemini AI to provide accurate answers about Gita.
+A high-performance, async-first Retrieval-Augmented Generation (RAG) API for the Bhagavad Gita. Built with FastAPI, Qdrant, and Google Gemini.
 
-## System Architecture
+## Architecture
 
 ```mermaid
 graph TD
-    A[Docs] --> B[Document Processor]
-    B --> C[Text Chunks]
-    C --> D[SentenceTransformer Embedding Model]
-    D --> E[FAISS Vector Store]
-
-    F[User Question] --> G[Question Embedding]
-    G --> H[Similarity Search]
-    E --> H
-    H --> I[Context Retrieval]
-    I --> J[Gemini]
-    J --> K[Generated Answer]
-
+    A[User Query] --> B[FastAPI App]
+    B --> C{Cache Hit?}
+    C -->|Yes| D[Return Cached Answer]
+    C -->|No| E[Embed Query]
+    E --> F[Qdrant Vector Search]
+    F --> G[Cross-Encoder Reranker]
+    G --> H[Gemini LLM]
+    H --> I[Stream / Return Answer]
+    I --> J[Cache Answer]
 ```
 
-## 🚀 Quick Start
+## Tech Stack
 
-### Using Docker
+| Component | Technology |
+|-----------|-----------|
+| **Framework** | FastAPI (async ASGI) |
+| **Vector DB** | Qdrant (local mmap mode) |
+| **Embeddings** | Google Gemini Embedding API |
+| **LLM** | Google Gemini 2.0 Flash |
+| **Reranker** | BGE Reranker (sentence-transformers) |
+| **Cache** | Redis (optional) / In-memory LRU |
+| **HTTP Client** | httpx with connection pooling |
+| **Validation** | Pydantic v2 |
 
-```bash
+## Quick Start
 
-# 2. Build and start the container
-docker-compose up --build -d
+### Prerequisites
 
-# 3. Check service status
-docker-compose ps
+- Python 3.10+
+- [Google Gemini API Key](https://aistudio.google.com/app/apikey)
 
-# 4. Test the API (health check)
-curl http://localhost:8080/health
-
-# To stop the container
-docker-compose down
-
-# View logs
-docker-compose logs -f
-```
-
-### Local Development Setup
+### Local Development
 
 ```bash
+# Clone and enter directory
+cd rag-python-gita
+
 # Create virtual environment
-python -m venv venv
+python3 -m venv .venv
 
-# Activate virtual environment
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate    # Windows
+# Activate
+source .venv/bin/activate  # macOS/Linux
+# .venv\Scripts\activate   # Windows
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Set environment variables
+cp .env.example .env
+# Edit .env and add your GEMINI_API_KEY
 
 # Run the application
 python main.py
 ```
 
-## 📁 Project Structure
+The API will be available at `http://localhost:8080`.
 
-```
-project/
-├── data/
-│   ├── processed/
-│   │   ├── faiss_index/    # Vector embeddings
-│   │   └── chunks/         # Processed text chunks
-│   └── raw/                # Raw documentation
-├── src/
-│   ├── core/              # Core processing logic
-│   ├── api/               # API endpoints
-│   ├── services/          # Gemini integration
-│   └── utils/             # Helper functions
-├── Dockerfile
-├── requirements.txt
-└── main.py
-```
-
-## 🔄 Processing Pipeline
-
-```mermaid
-sequenceDiagram
-    participant D as Documentation
-    participant C as Chunker
-    participant E as Embedder
-    participant F as FAISS
-    participant U as User
-    participant G as Gemini
-
-    D->>C: Split into chunks
-    C->>E: Generate embeddings
-    E->>F: Store vectors
-
-    U->>E: Question
-    E->>F: Search similar docs
-    F->>G: Context + Question
-    G->>U: Generated Answer
-```
-
-## 🛠️ Key Components
-
-### 1. Document Processor
-
-- Splits documentation into manageable chunks
-- Maintains document structure
-- Processes markdown formatting
-
-### 2. Embedding System
-
-- Uses SentenceTransformer for generating embeddings
-- Converts text chunks to vectors
-- Optimizes for technical content
-
-### 3. Vector Store (FAISS)
-
-- Fast similarity search
-- In-memory vector storage
-- Efficient retrieval
-
-### 4. Response Generator
-
-- Context-aware answers
-- Technical accuracy
-- Natural Gen Ai language responses
-
-## 📡 API Endpoints
-
-### Ask Question
+### Using Docker Compose (Recommended for Production)
 
 ```bash
-POST /api/chat
-Content-Type: application/json
+# Start app + Redis
+docker-compose up --build -d
 
-{
-    "question": "Who is arjuna?",
-    "max_context": 3  # Optional: Number of relevant chunks to use
-}
+# Check health
+curl http://localhost:8080/health
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
 ```
+
+## API Documentation
+
+Auto-generated docs are available at:
+- **Swagger UI**: `http://localhost:8080/docs`
+- **ReDoc**: `http://localhost:8080/redoc`
+
+### Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | No | Health check |
+| GET | `/api/v1/health` | No | Detailed health + vector count |
+| POST | `/api/v1/ask` | Bearer | Ask a question |
+| POST | `/api/v1/search` | Bearer | Direct semantic search |
+
+### Ask a Question
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/ask \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is the concept of dharma in the Gita?"}'
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
+  -d '{
+    "question": "What is the concept of dharma in the Gita?",
+    "context_limit": 5,
+    "chapter_filter": 2
+  }'
 ```
 
-### Health Check
+**Response:**
+```json
+{
+  "answer": "Dharma in the Bhagavad Gita refers to...",
+  "citations": [],
+  "model_used": "gemini-2.0-flash",
+  "context_chunks_used": 5,
+  "query_time_ms": 850.2
+}
+```
+
+### Streaming Response
 
 ```bash
-GET /health
+curl -X POST http://localhost:8080/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
+  -d '{
+    "question": "What is karma yoga?",
+    "stream": true
+  }'
 ```
 
-## 🔧 Configuration
+Returns Server-Sent Events (SSE) with tokens streamed in real-time.
 
-### Environment Variables
+### Search Chapters by Speaker
 
-```env
-
-
-GEMINI_API_KEY=
-
-# Application Settings
-APP_ENV="development"
-DEBUG=True
-PORT=8000
-
-
-# Embedding Model Configuration
-EMBEDDING_MODEL="gemini-embedding-2-preview"
-
-# Processing Configuration
-CHUNK_SIZE=1000
-CHUNK_OVERLAP=100
-MAX_TOKENS=8192
+```bash
+curl -X POST http://localhost:8080/api/v1/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <YOUR_API_KEY>" \
+  -d '{
+    "query": "duty and action",
+    "k": 5,
+    "speaker_filter": "Krishna",
+    "chapter_filter": 3
+  }'
 ```
 
-### Docker Configuration
+## Project Structure
+
+```
+.
+├── app/
+│   ├── main.py              # FastAPI app with lifespan management
+│   ├── state.py             # Shared application state
+│   ├── config.py            # Pydantic v2 settings
+│   ├── api/
+│   │   ├── models.py        # Request/response Pydantic models
+│   │   ├── routes.py        # FastAPI endpoints
+│   │   └── deps.py          # Dependencies (auth, rate limiting)
+│   ├── core/
+│   │   ├── chunker.py       # Document chunking
+│   │   ├── embedder.py      # Async embedding with cache
+│   │   └── searcher.py      # Qdrant search + reranker
+│   ├── services/
+│   │   ├── gemini.py        # Async Gemini HTTP client
+│   │   ├── cache.py         # Redis + in-memory cache
+│   │   └── rag_engine.py    # RAG orchestration
+│   └── utils/
+│       ├── logger.py        # Structured JSON logging
+│       └── helpers.py       # Utility functions
+├── tests/
+│   ├── test_api_models.py   # Model validation tests
+│   ├── test_chunker.py      # Chunking logic tests
+│   └── test_app.py          # Integration tests
+├── data/
+│   ├── raw/
+│   │   └── gita.md          # Source text
+│   └── processed/
+│       └── chunks/          # Processed JSON chunks
+├── main.py                  # Entry point (uvicorn)
+├── requirements.txt
+├── pytest.ini
+├── docker-compose.yml
+├── Dockerfile
+├── .env                     # Environment variables (not committed)
+└── .env.example             # Environment template
+```
+
+## Configuration
+
+All configuration is done via environment variables or `.env` file.
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `GEMINI_API_KEY` | Your Google Gemini API key |
+
+### Optional
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_KEY` | `dev-key-change-in-production` | Bearer token for API auth |
+| `PORT` | `8080` | Server port |
+| `HOST` | `0.0.0.0` | Server host |
+| `REDIS_URL` | *(empty)* | Redis URL (empty = in-memory cache) |
+| `QDRANT_PATH` | `data/qdrant_storage` | Local Qdrant storage path |
+| `ENABLE_RERANKER` | `true` | Enable cross-encoder reranking |
+| `RERANKER_MODEL` | `BAAI/bge-reranker-base` | Reranker model name |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | LLM for generation |
+| `EMBEDDING_MODEL` | `gemini-embedding-2-preview` | Embedding model |
+
+See `.env.example` for the full list.
+
+## How It Works
+
+1. **Startup**: The app processes `gita.md` into semantic chunks, generates embeddings via Gemini, and stores them in Qdrant.
+2. **Query**: User question is embedded, searched in Qdrant (with optional chapter/speaker filters).
+3. **Rerank**: Top-k*2 candidates are reranked by a cross-encoder for higher accuracy.
+4. **Generate**: Best chunks + question are sent to Gemini for a contextual answer.
+5. **Cache**: Embeddings and answers are cached to minimize API calls.
+
+## Testing
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# With coverage
+pytest tests/ -v --cov=app
+```
+
+## Performance Characteristics
+
+| Metric | Approximate |
+|--------|-------------|
+| Embedding latency | ~100ms per chunk (cached after first call) |
+| Vector search | ~10-30ms (Qdrant local mmap) |
+| Reranking | ~50-200ms (depends on model) |
+| LLM generation | ~500-2000ms (streaming reduces perceived latency) |
+| Memory (base) | ~300MB (without reranker loaded) |
+| Memory (with reranker) | ~700MB |
+
+## Docker
+
+The Dockerfile uses a multi-stage build for a smaller final image:
 
 ```dockerfile
-- **Multi-stage Build** - Reduces final image size (~300MB)
-- **Security First** - Non-root user with minimal privileges
-- **Production-Ready** - Environment variables & health checks
-- **Efficient Caching** - Optimized layer caching for faster builds
-Refer dockerfile for more details
+# Build stage
+FROM python:3.12-slim as builder
+# ... installs dependencies into virtualenv
+
+# Runtime stage
+FROM python:3.12-slim
+COPY --from=builder /opt/venv /opt/venv
+# ... runs as non-root user
 ```
 
-## 📊 Performance Considerations
+## Roadmap
 
-- Embedding Generation: ~100ms per chunk
-- Search Latency: ~50ms
-- Response Generation: ~500ms
-- Memory Usage: ~500MB base + ~100MB per 1000 chunks
+- [ ] Hybrid search (dense + BM25 keyword)
+- [ ] Knowledge graph with Neo4j (GraphRAG)
+- [ ] Conversation memory + multi-turn RAG
+- [ ] Langfuse observability tracing
+- [ ] RAGAS automated evaluation
 
-## 🔍 Monitoring
+## License
 
-Monitor system health:
-
-```bash
-curl http://localhost:8000/health
-```
-
-## 🚨 Error Handling
-
-- Documents missing/corrupted
-- Embedding generation failures
-- Search index errors
-- Response generation timeout
-
-## 🔐 Security
-
-- Input sanitization
-- Error message sanitization
+MIT

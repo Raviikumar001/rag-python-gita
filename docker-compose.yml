@@ -1,4 +1,17 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   gita-assistant:
     build: .
     ports:
@@ -7,9 +20,21 @@ services:
       - .env
     environment:
       - APP_ENV=production
+      - REDIS_URL=redis://redis:6379/0
+      - HF_TOKEN=${HF_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - qdrant_data:/app/data/qdrant_storage
+      - ./data/raw:/app/data/raw:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 10s 
+      retries: 5
+      start_period: 300s
+
+volumes:
+  redis_data:
+  qdrant_data:
