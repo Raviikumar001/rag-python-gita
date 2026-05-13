@@ -1,5 +1,6 @@
 # app/services/gemini.py
 import asyncio
+import json
 import logging
 import os
 import time
@@ -8,7 +9,6 @@ from typing import AsyncIterator, List
 import httpx
 from tenacity import (
     retry,
-    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
     before_sleep_log,
@@ -18,45 +18,55 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Permanent HTTP errors — retrying these is pointless
-_PERMANENT_CODES = frozenset({400, 401, 402, 403, 404, 405})
+# ---- Prompt template (single source, no duplication) ----
+
+_PROMPT_TEMPLATE = """You are a deeply knowledgeable assistant specializing in the Bhagavad Gita.
+Your role is to provide clear, accurate, and spiritually insightful explanations of its teachings, verses, and philosophical concepts.
+
+Guidelines:
+1. Directly address the user's question using the provided context.
+2. Cite specific verses and chapters when relevant.
+3. Explain Sanskrit terms clearly.
+4. Connect teachings to broader philosophical and spiritual context.
+5. Provide practical interpretations for modern life.
+6. Use markdown formatting for readability.
+
+Context from the Bhagavad Gita:
+```
+{context}
+```
+
+Question: {question}
+
+Provide a comprehensive answer, citing specific verses where relevant."""
 
 
-def _should_retry(exception: BaseException) -> bool:
-    """Only retry transient errors (429, 5xx, connection errors). Never retry 4xx (except 429)."""
-    if isinstance(exception, RateLimitError):
-        return True
-    if isinstance(exception, httpx.ConnectError):
-        return True
-    if isinstance(exception, httpx.ReadError):
-        return True
-    if isinstance(exception, httpx.HTTPStatusError):
-        status = exception.response.status_code
-        if status == 429:
-            return True
-        if 500 <= status < 600:
-            return True
-        # 4xx (except 429) is a permanent error — don't retry
-        return False
-    return False
-
+# ---- Retry logic ----
 
 class RateLimitError(Exception):
     """Raised when Gemini API returns 429 and we should back off."""
     pass
 
 
+def _should_retry(exception: BaseException) -> bool:
+    """Only retry transient errors (429, 5xx, connection). 4xx (except 429) fail immediately."""
+    if isinstance(exception, RateLimitError):
+        return True
+    if isinstance(exception, (httpx.ConnectError, httpx.ReadError)):
+        return True
+    if isinstance(exception, httpx.HTTPStatusError):
+        status = exception.response.status_code
+        return status == 429 or 500 <= status < 600
+    return False
+
+
+# ---- Service ----
+
 class GeminiService:
     """Async HTTP client for Google Gemini REST API.
 
-    Uses the latest stable models:
-    - Generation: gemini-3-flash-preview (fast, widely available, free tier)
-    - Embeddings: text-embedding-004 (latest stable embedding model)
-
-    Rate limiting:
-    - 429: sleep based on retry-after header, then retry up to 5 times
-    - 5xx: standard exponential backoff
-    - 4xx (except 429): fail immediately — retrying won't help
+    All model names come from configuration (env vars or Settings).
+    No hardcoded fallbacks — the app's config layer is the single source of truth.
     """
 
     BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -64,18 +74,26 @@ class GeminiService:
     EMBEDDING_MIN_INTERVAL = 0.5
     GENERATION_MIN_INTERVAL = 4.0
 
-    def __init__(self, api_key: str | None = None, model: str = "gemini-3-flash-preview"):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY is required")
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        embedding_model: str,
+    ):
+        self.api_key = api_key
         self.model = model
+        self.embedding_model = embedding_model
         self.client = httpx.AsyncClient(
             timeout=60.0,
             limits=httpx.Limits(max_connections=20),
         )
         self._lock = asyncio.Lock()
         self._last_request_time = 0.0
-        logger.info(f"Initialized GeminiService with model={model}")
+        logger.info(
+            f"Initialized GeminiService gen_model={model} emb_model={embedding_model}"
+        )
+
+    # ---- payload builder ----
 
     def _build_payload(self, contents: list, response_schema: dict | None = None) -> dict:
         payload: dict = {"contents": contents}
@@ -86,25 +104,23 @@ class GeminiService:
             }
         return payload
 
+    # ---- rate limiting ----
+
     async def _throttle(self, min_interval: float) -> None:
-        """Ensure minimum interval between API calls."""
         async with self._lock:
             now = time.time()
             elapsed = now - self._last_request_time
             if elapsed < min_interval:
-                wait = min_interval - elapsed
-                logger.debug(f"Rate limiting: sleeping {wait:.2f}s")
-                await asyncio.sleep(wait)
+                await asyncio.sleep(min_interval - elapsed)
             self._last_request_time = time.time()
 
+    # ---- response checking ----
+
     async def _check_response(self, response: httpx.Response) -> None:
-        """Inspect response status and raise appropriate errors."""
         if response.status_code == 429:
             retry_after = response.headers.get("retry-after")
             wait_time = int(retry_after) if retry_after else 10
-            logger.warning(
-                f"Gemini rate limited (429). Waiting {wait_time}s before retry."
-            )
+            logger.warning(f"Gemini rate limited (429). Waiting {wait_time}s before retry.")
             await asyncio.sleep(wait_time)
             raise RateLimitError(f"Rate limited, retry after {wait_time}s")
 
@@ -112,12 +128,14 @@ class GeminiService:
             body = response.text[:200]
             logger.error(f"Gemini model not found (404): {response.url} — {body}")
             raise httpx.HTTPStatusError(
-                f"Model not found. Check GEMINI_MODEL env var or API key permissions.",
+                f"Model not found. Check GEMINI_MODEL / EMBEDDING_MODEL env vars or API key permissions.",
                 request=response.request,
                 response=response,
             )
 
         response.raise_for_status()
+
+    # ---- generation ----
 
     @retry(
         stop=stop_after_attempt(5),
@@ -126,7 +144,6 @@ class GeminiService:
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def generate_content(self, prompt: str, response_schema: dict | None = None) -> str:
-        """Generate content with retry for transient errors only."""
         await self._throttle(self.GENERATION_MIN_INTERVAL)
 
         url = f"{self.BASE_URL}/models/{self.model}:generateContent?key={self.api_key}"
@@ -141,7 +158,7 @@ class GeminiService:
             return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError) as exc:
             logger.error(f"Unexpected Gemini response format: {data}")
-            raise ValueError(f"Unexpected response format") from exc
+            raise ValueError("Unexpected response format") from exc
 
     @retry(
         stop=stop_after_attempt(5),
@@ -150,7 +167,6 @@ class GeminiService:
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def stream_content(self, prompt: str) -> AsyncIterator[str]:
-        """Stream content with retry for transient errors only."""
         await self._throttle(self.GENERATION_MIN_INTERVAL)
 
         url = (
@@ -169,8 +185,6 @@ class GeminiService:
                     if data_str in ("", "[DONE]", "[DONE]\r"):
                         break
                     try:
-                        import json
-
                         data = json.loads(data_str)
                         candidate = data.get("candidates", [{}])[0]
                         parts = candidate.get("content", {}).get("parts", [{}])
@@ -180,52 +194,20 @@ class GeminiService:
                     except json.JSONDecodeError:
                         continue
 
-    async def get_answer(self, question: str, context_chunks: List[str]) -> str:
+    # ---- prompt builders ----
+
+    def _build_qa_prompt(self, question: str, context_chunks: List[str]) -> str:
         context_text = "\n\n---\n\n".join(context_chunks)
-        prompt = f"""You are a deeply knowledgeable assistant specializing in the Bhagavad Gita.
-Your role is to provide clear, accurate, and spiritually insightful explanations of its teachings, verses, and philosophical concepts.
+        return _PROMPT_TEMPLATE.format(context=context_text, question=question)
 
-Guidelines:
-1. Directly address the user's question using the provided context.
-2. Cite specific verses and chapters when relevant.
-3. Explain Sanskrit terms clearly.
-4. Connect teachings to broader philosophical and spiritual context.
-5. Provide practical interpretations for modern life.
-6. Use markdown formatting for readability.
-
-Context from the Bhagavad Gita:
-```
-{context_text}
-```
-
-Question: {question}
-
-Provide a comprehensive answer, citing specific verses where relevant."""
-        return await self.generate_content(prompt)
+    async def get_answer(self, question: str, context_chunks: List[str]) -> str:
+        return await self.generate_content(self._build_qa_prompt(question, context_chunks))
 
     async def stream_answer(self, question: str, context_chunks: List[str]) -> AsyncIterator[str]:
-        context_text = "\n\n---\n\n".join(context_chunks)
-        prompt = f"""You are a deeply knowledgeable assistant specializing in the Bhagavad Gita.
-Your role is to provide clear, accurate, and spiritually insightful explanations of its teachings, verses, and philosophical concepts.
-
-Guidelines:
-1. Directly address the user's question using the provided context.
-2. Cite specific verses and chapters when relevant.
-3. Explain Sanskrit terms clearly.
-4. Connect teachings to broader philosophical and spiritual context.
-5. Provide practical interpretations for modern life.
-6. Use markdown formatting for readability.
-
-Context from the Bhagavad Gita:
-```
-{context_text}
-```
-
-Question: {question}
-
-Provide a comprehensive answer, citing specific verses where relevant."""
-        async for chunk in self.stream_content(prompt):
+        async for chunk in self.stream_content(self._build_qa_prompt(question, context_chunks)):
             yield chunk
+
+    # ---- embeddings ----
 
     @retry(
         stop=stop_after_attempt(5),
@@ -233,11 +215,10 @@ Provide a comprehensive answer, citing specific verses where relevant."""
         retry=_should_retry,
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
-    async def embed_content(self, text: str, model: str = "text-embedding-004") -> List[float]:
-        """Embed document content for indexing."""
+    async def embed_content(self, text: str) -> List[float]:
         await self._throttle(self.EMBEDDING_MIN_INTERVAL)
 
-        url = f"{self.BASE_URL}/models/{model}:embedContent?key={self.api_key}"
+        url = f"{self.BASE_URL}/models/{self.embedding_model}:embedContent?key={self.api_key}"
         payload = {
             "content": {"parts": [{"text": text}]},
             "taskType": "RETRIEVAL_DOCUMENT",
@@ -253,11 +234,10 @@ Provide a comprehensive answer, citing specific verses where relevant."""
         retry=_should_retry,
         before_sleep=before_sleep_log(logger, logging.WARNING),
     )
-    async def embed_query(self, text: str, model: str = "text-embedding-004") -> List[float]:
-        """Embed a user query."""
+    async def embed_query(self, text: str) -> List[float]:
         await self._throttle(self.EMBEDDING_MIN_INTERVAL)
 
-        url = f"{self.BASE_URL}/models/{model}:embedContent?key={self.api_key}"
+        url = f"{self.BASE_URL}/models/{self.embedding_model}:embedContent?key={self.api_key}"
         payload = {
             "content": {"parts": [{"text": text}]},
             "taskType": "RETRIEVAL_QUERY",

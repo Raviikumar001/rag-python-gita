@@ -1,4 +1,5 @@
 # app/api/routes.py
+import hashlib
 import json
 import time
 from typing import AsyncIterator
@@ -47,7 +48,7 @@ async def ask_question(
 
             # Cache the full answer after streaming completes
             full_answer = "".join(buffer)
-            cache_key = f"ans:{hash(query.question)}:{query.context_limit}:{query.chapter_filter}:{query.speaker_filter}"
+            cache_key = f"ans:{hashlib.md5(query.question.encode()).hexdigest()}:{query.context_limit}:{query.chapter_filter}:{query.speaker_filter}"
             await rag.cache.set(cache_key, full_answer, ttl=settings.cache_ttl)
 
             if query.session_id:

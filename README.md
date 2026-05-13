@@ -23,8 +23,8 @@ graph TD
 |-----------|-----------|
 | **Framework** | FastAPI (async ASGI) |
 | **Vector DB** | Qdrant (local mmap mode) |
-| **Embeddings** | Google Gemini Embedding API |
-| **LLM** | Google Gemini 2.0 Flash |
+| **Embeddings** | Gemini Embedding 2 (Preview, 3072-dim) |
+| **LLM** | Google Gemini 3 Flash Preview |
 | **Reranker** | BGE Reranker (sentence-transformers) |
 | **Cache** | Redis (optional) / In-memory LRU |
 | **HTTP Client** | httpx with connection pooling |
@@ -112,7 +112,7 @@ curl -X POST http://localhost:8080/api/v1/ask \
 {
   "answer": "Dharma in the Bhagavad Gita refers to...",
   "citations": [],
-  "model_used": "gemini-2.0-flash",
+  "model_used": "gemini-3-flash-preview",
   "context_chunks_used": 5,
   "query_time_ms": 850.2
 }
@@ -206,10 +206,11 @@ All configuration is done via environment variables or `.env` file.
 | `HOST` | `0.0.0.0` | Server host |
 | `REDIS_URL` | *(empty)* | Redis URL (empty = in-memory cache) |
 | `QDRANT_PATH` | `data/qdrant_storage` | Local Qdrant storage path |
-| `ENABLE_RERANKER` | `true` | Enable cross-encoder reranking |
+| `ENABLE_RERANKER` | `false` | Enable cross-encoder reranking |
 | `RERANKER_MODEL` | `BAAI/bge-reranker-base` | Reranker model name |
-| `GEMINI_MODEL` | `gemini-2.0-flash` | LLM for generation |
-| `EMBEDDING_MODEL` | `gemini-embedding-2-preview` | Embedding model |
+| `GEMINI_MODEL` | `gemini-3-flash-preview` | LLM for generation |
+| `EMBEDDING_MODEL` | `gemini-embedding-2-preview` | Embedding model (3072-dim) |
+| `EMBEDDING_VECTOR_SIZE` | `3072` | Must match embedding model dimensions |
 
 See `.env.example` for the full list.
 

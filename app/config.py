@@ -16,11 +16,15 @@ class Settings(BaseSettings):
     # Security
     api_key: str = Field(default="dev-key-change-in-production", alias="API_KEY")
 
-    # Gemini
+    # Gemini — no hardcoded service defaults anywhere else; these are the single source of truth
     gemini_api_key: str = Field(alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-3-flash-preview", alias="GEMINI_MODEL")
     gemini_embedding_model: str = Field(
-        default="text-embedding-004", alias="EMBEDDING_MODEL"
+        default="gemini-embedding-2-preview", alias="EMBEDDING_MODEL"
+    )
+    embedding_vector_size: int = Field(
+        default=3072, alias="EMBEDDING_VECTOR_SIZE",
+        description="gemini-embedding-2-preview = 3072, text-embedding-004 = 768"
     )
 
     # Cache
@@ -34,7 +38,7 @@ class Settings(BaseSettings):
     # HuggingFace
     hf_token: str | None = Field(default=None, alias="HF_TOKEN")
 
-    # Reranker - disabled by default for low-memory deployments
+    # Reranker — disabled by default for low-memory deployments
     reranker_model: str = Field(
         default="BAAI/bge-reranker-base", alias="RERANKER_MODEL"
     )
@@ -69,6 +73,6 @@ class Settings(BaseSettings):
     }
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     return Settings()

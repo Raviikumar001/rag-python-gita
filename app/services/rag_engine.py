@@ -1,4 +1,5 @@
 # app/services/rag_engine.py
+import hashlib
 import json
 import time
 from typing import AsyncIterator, Optional, List
@@ -36,7 +37,7 @@ class RAGEngine:
         speaker_filter: Optional[str],
     ) -> str:
         key_data = f"{question}:{context_limit}:{chapter_filter}:{speaker_filter}"
-        return f"ans:{hash(key_data)}"
+        return f"ans:{hashlib.md5(key_data.encode()).hexdigest()}"
 
     async def get_answer(
         self,

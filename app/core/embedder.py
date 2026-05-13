@@ -23,16 +23,14 @@ class DocumentEmbedder:
         self,
         gemini: GeminiService,
         cache: CacheService,
-        model: str = "gemini-embedding-2-preview",
         max_concurrency: int = 3,
         batch_delay: float = 1.0,
     ):
         self.gemini = gemini
         self.cache = cache
-        self.model = model
         self.max_concurrency = max_concurrency
         self.batch_delay = batch_delay
-        logger.info(f"Initialized DocumentEmbedder model={model} concurrency={max_concurrency}")
+        logger.info(f"Initialized DocumentEmbedder model={gemini.embedding_model} concurrency={max_concurrency}")
 
     def _cache_key(self, text: str) -> str:
         return f"emb:{hashlib.md5(text.encode('utf-8')).hexdigest()}"
@@ -45,7 +43,7 @@ class DocumentEmbedder:
             logger.debug(f"Embedding cache hit for key={cache_key}")
             return cached
 
-        embedding = await self.gemini.embed_query(text, model=self.model)
+        embedding = await self.gemini.embed_query(text)
         await self.cache.set(cache_key, embedding, ttl=86400)
         return embedding
 
@@ -75,7 +73,7 @@ class DocumentEmbedder:
 
             async def fetch(index: int, text: str) -> tuple[int, List[float]]:
                 async with sem:
-                    embedding = await self.gemini.embed_content(text, model=self.model)
+                    embedding = await self.gemini.embed_content(text)
                     cache_key = self._cache_key(text)
                     await self.cache.set(cache_key, embedding, ttl=86400)
                     return index, embedding

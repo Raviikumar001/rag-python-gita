@@ -27,15 +27,15 @@ async def lifespan(app: FastAPI):
     # Initialize services
     cache = create_cache(settings.redis_url)
     gemini = GeminiService(
-        api_key=settings.gemini_api_key, model=settings.gemini_model
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_model,
+        embedding_model=settings.gemini_embedding_model,
     )
-    embedder = DocumentEmbedder(
-        gemini, cache, model=settings.gemini_embedding_model
-    )
+    embedder = DocumentEmbedder(gemini, cache)
     searcher = QdrantSearcher(
         path=settings.qdrant_path,
         collection_name=settings.qdrant_collection,
-        vector_size=3072,
+        vector_size=settings.embedding_vector_size,
     )
 
     # Reranker is lazy-loaded on first search request for fast startup
