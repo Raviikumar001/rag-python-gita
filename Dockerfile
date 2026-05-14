@@ -1,38 +1,33 @@
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 COPY requirements.txt .
 
-# Install build dependencies and create virtual environment
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc python3-dev && \
-    python -m venv /opt/venv && \
+RUN python -m venv /opt/venv && \
     /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Create a non-root user
 RUN adduser --disabled-password --gecos '' appuser
 
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 COPY . .
 
-# Set environment variables
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random
 
-# Create necessary directories and set permissions
-RUN mkdir -p data/processed/faiss_index data/processed/chunks logs && \
+# Create necessary directories
+RUN mkdir -p data/qdrant_storage data/raw data/processed logs && \
     chown -R appuser:appuser /app
 
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
-CMD ["python", "main.py"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--loop", "uvloop"]
